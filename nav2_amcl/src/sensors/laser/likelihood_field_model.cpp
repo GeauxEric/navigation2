@@ -21,6 +21,7 @@
 
 #include <math.h>
 #include <assert.h>
+#include <stdio.h>
 
 #include "nav2_amcl/sensors/laser/laser.hpp"
 
@@ -135,6 +136,8 @@ LikelihoodFieldModel::sensorFunction(LaserData * data, pf_sample_set_t * set)
 bool
 LikelihoodFieldModel::sensorUpdate(pf_t * pf, LaserData * data)
 {
+  printf("[likelihood_field_model] sensorUpdate starting\n");
+
   if (max_beams_ < 2) {
     return false;
   }

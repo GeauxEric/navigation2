@@ -23,6 +23,8 @@
 #include <sys/types.h>
 #include <math.h>
 #include <algorithm>
+#include <stdio.h>
+#include <rclcpp/logging.hpp>
 
 #include "nav2_amcl/motion_model/motion_model.hpp"
 #include "nav2_amcl/angleutils.hpp"
@@ -45,6 +47,8 @@ DifferentialMotionModel::odometryUpdate(
   pf_t * pf, const pf_vector_t & pose,
   const pf_vector_t & delta)
 {
+//    RCLCPP_INFO(rclcpp::get_logger("DifferentialMotionModel"), "odometryUpdate");
+    printf("DifferentialMotionModel::odometryUpdate\n");
   // Compute the new sample poses
   pf_sample_set_t * set;
 

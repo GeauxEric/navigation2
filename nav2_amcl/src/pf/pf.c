@@ -30,6 +30,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <time.h>
+#include <stdio.h>
 
 #include "nav2_amcl/pf/pf.hpp"
 #include "nav2_amcl/pf/pf_pdf.hpp"
@@ -250,6 +251,7 @@ void pf_update_action(pf_t * pf, pf_action_model_fn_t action_fn, void * action_d
 // Update the filter with some new sensor observation
 void pf_update_sensor(pf_t * pf, pf_sensor_model_fn_t sensor_fn, void * sensor_data)
 {
+  printf("[pf] pf_update_sensor starting\n");
   int i;
   pf_sample_set_t * set;
   pf_sample_t * sample;
@@ -259,6 +261,7 @@ void pf_update_sensor(pf_t * pf, pf_sensor_model_fn_t sensor_fn, void * sensor_d
 
   // Compute the sample weights
   total = (*sensor_fn)(sensor_data, set);
+    printf("[pf] pf_update_sensor total=%f\n", total);
 
   if (total > 0.0) {
     // Normalize weights

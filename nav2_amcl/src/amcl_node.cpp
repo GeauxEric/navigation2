@@ -242,6 +242,8 @@ AmclNode::on_configure(const rclcpp_lifecycle::State & /*state*/)
   initParticleFilter();
   initLaserScan();
 
+ RCLCPP_INFO(get_logger(), "Configuring success");
+
   return nav2_util::CallbackReturn::SUCCESS;
 }
 
@@ -303,6 +305,8 @@ AmclNode::on_activate(const rclcpp_lifecycle::State & /*state*/)
   } else if (init_pose_received_on_inactive) {
     handleInitialPose(last_published_pose_);
   }
+
+  RCLCPP_INFO(get_logger(), "on_activate success");
 
   return nav2_util::CallbackReturn::SUCCESS;
 }
@@ -434,13 +438,16 @@ AmclNode::getOdomPose(
   double & x, double & y, double & yaw,
   const rclcpp::Time & sensor_timestamp, const std::string & frame_id)
 {
-  // Get the robot's pose
+
+    RCLCPP_INFO(get_logger(), "getOdomPose frame_id=%s", frame_id.c_str());
+    // Get the robot's pose
   geometry_msgs::msg::PoseStamped ident;
   ident.header.frame_id = nav2_util::strip_leading_slash(frame_id);
   ident.header.stamp = sensor_timestamp;
   tf2::toMsg(tf2::Transform::getIdentity(), ident.pose);
 
   try {
+      RCLCPP_INFO(get_logger(), "getOdomPose odom_frame_id_=%s", odom_frame_id_.c_str());
     tf_buffer_->transform(ident, odom_pose, odom_frame_id_);
   } catch (tf2::TransformException & e) {
     ++scan_error_count_;
@@ -644,23 +651,28 @@ AmclNode::laserReceived(sensor_msgs::msg::LaserScan::ConstSharedPtr laser_scan)
   }
 
   std::string laser_scan_frame_id = nav2_util::strip_leading_slash(laser_scan->header.frame_id);
+  RCLCPP_INFO(get_logger(), "laser scan frame id %s", laser_scan_frame_id.c_str());
   last_laser_received_ts_ = now();
   int laser_index = -1;
   geometry_msgs::msg::PoseStamped laser_pose;
 
   // Do we have the base->base_laser Tx yet?
   if (frame_to_laser_.find(laser_scan_frame_id) == frame_to_laser_.end()) {
+      RCLCPP_WARN(get_logger(), "Did not find laser for the frame %s", laser_scan_frame_id.c_str());
     if (!addNewScanner(laser_index, laser_scan, laser_scan_frame_id, laser_pose)) {
+        RCLCPP_WARN(get_logger(), "Could not find transform for the frame %s", laser_scan_frame_id.c_str());
       return;  // could not find transform
     }
   } else {
     // we have the laser pose, retrieve laser index
     laser_index = frame_to_laser_[laser_scan->header.frame_id];
+      RCLCPP_INFO(get_logger(), "Use the laser %d", laser_index);
   }
 
   // Where was the robot when this scan was taken?
   pf_vector_t pose;
-  if (!getOdomPose(
+    RCLCPP_INFO(get_logger(), "base_frame_id_=%s", base_frame_id_.c_str());
+    if (!getOdomPose(
       latest_odom_pose_, pose.v[0], pose.v[1], pose.v[2],
       laser_scan->header.stamp, base_frame_id_))
   {
@@ -671,24 +683,30 @@ AmclNode::laserReceived(sensor_msgs::msg::LaserScan::ConstSharedPtr laser_scan)
   pf_vector_t delta = pf_vector_zero();
   bool force_publication = false;
   if (!pf_init_) {
-    // Pose at last filter update
+      RCLCPP_INFO(get_logger(), "pf_init_");
+      // Pose at last filter update
     pf_odom_pose_ = pose;
     pf_init_ = true;
 
     for (unsigned int i = 0; i < lasers_update_.size(); i++) {
       lasers_update_[i] = true;
+        RCLCPP_INFO(get_logger(), "lasers_update_[%d] = true", i);
     }
 
     force_publication = true;
     resample_count_ = 0;
   } else {
     // Set the laser update flags
-    if (shouldUpdateFilter(pose, delta)) {
+      // DONE(yunding): investigate why pose is considered no movement
+      // because the odom -> base_link is identical
+      if (shouldUpdateFilter(pose, delta)) {
+        RCLCPP_INFO(get_logger(), "shouldUpdateFilter");
       for (unsigned int i = 0; i < lasers_update_.size(); i++) {
         lasers_update_[i] = true;
       }
     }
     if (lasers_update_[laser_index]) {
+        RCLCPP_INFO(get_logger(), "motion_model_->odometryUpdate");
       motion_model_->odometryUpdate(pf_, pose, delta);
     }
     force_update_ = false;
@@ -712,6 +730,8 @@ AmclNode::laserReceived(sensor_msgs::msg::LaserScan::ConstSharedPtr laser_scan)
     if (!force_update_) {
       publishParticleCloud(set);
     }
+  } else {
+      RCLCPP_WARN(get_logger(), "the robot hasn't moved");
   }
   if (resampled || force_publication || !first_pose_sent_) {
     amcl_hyp_t max_weight_hyps;
@@ -784,7 +804,10 @@ bool AmclNode::shouldUpdateFilter(const pf_vector_t pose, pf_vector_t & delta)
   delta.v[1] = pose.v[1] - pf_odom_pose_.v[1];
   delta.v[2] = angleutils::angle_diff(pose.v[2], pf_odom_pose_.v[2]);
 
-  // See if we should update the filter
+    RCLCPP_INFO(get_logger(), "delta.v[0]=%f delta.v[1]=%f delta.v[2]=%f",
+                fabs(delta.v[0]), fabs(delta.v[1]), fabs(delta.v[2]));
+
+    // See if we should update the filter
   bool update = fabs(delta.v[0]) > d_thresh_ ||
     fabs(delta.v[1]) > d_thresh_ ||
     fabs(delta.v[2]) > a_thresh_;
@@ -797,6 +820,7 @@ bool AmclNode::updateFilter(
   const sensor_msgs::msg::LaserScan::ConstSharedPtr & laser_scan,
   const pf_vector_t & pose)
 {
+    RCLCPP_INFO(get_logger(), "updateFilter start");
   nav2_amcl::LaserData ldata;
   ldata.laser = lasers_[laser_index];
   ldata.range_count = laser_scan->ranges.size();
@@ -827,7 +851,7 @@ bool AmclNode::updateFilter(
   // wrapping angle to [-pi .. pi]
   angle_increment = fmod(angle_increment + 5 * M_PI, 2 * M_PI) - M_PI;
 
-  RCLCPP_DEBUG(
+  RCLCPP_INFO(
     get_logger(), "Laser %d angles in base frame: min: %.3f inc: %.3f", laser_index, angle_min,
     angle_increment);
 
@@ -861,6 +885,7 @@ bool AmclNode::updateFilter(
   lasers_[laser_index]->sensorUpdate(pf_, reinterpret_cast<nav2_amcl::LaserData *>(&ldata));
   lasers_update_[laser_index] = false;
   pf_odom_pose_ = pose;
+    RCLCPP_INFO(get_logger(), "updateFilter success");
   return true;
 }
 
@@ -1291,6 +1316,8 @@ AmclNode::initPubSub()
 void
 AmclNode::initServices()
 {
+    RCLCPP_INFO(get_logger(), "initServices");
+
   global_loc_srv_ = create_service<std_srvs::srv::Empty>(
     "reinitialize_global_localization",
     std::bind(&AmclNode::globalLocalizationCallback, this, _1, _2, _3));
@@ -1298,6 +1325,7 @@ AmclNode::initServices()
   nomotion_update_srv_ = create_service<std_srvs::srv::Empty>(
     "request_nomotion_update",
     std::bind(&AmclNode::nomotionUpdateCallback, this, _1, _2, _3));
+    RCLCPP_INFO(get_logger(), "initServices success");
 }
 
 void
@@ -1321,6 +1349,7 @@ AmclNode::initOdometry()
     init_cov_[2] = last_published_pose_.pose.covariance[35];
   }
 
+    RCLCPP_INFO(get_logger(), "initiate motion model %s\n", robot_model_type_.c_str());
   motion_model_ = std::unique_ptr<nav2_amcl::MotionModel>(
     nav2_amcl::MotionModel::createMotionModel(
       robot_model_type_, alpha1_, alpha2_, alpha3_, alpha4_, alpha5_));

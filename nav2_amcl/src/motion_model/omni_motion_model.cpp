@@ -22,6 +22,7 @@
 #include <sys/types.h>
 #include <math.h>
 #include <algorithm>
+#include <stdio.h>
 
 #include "nav2_amcl/motion_model/motion_model.hpp"
 #include "nav2_amcl/angleutils.hpp"
